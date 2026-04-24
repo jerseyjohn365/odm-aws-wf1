@@ -16,14 +16,13 @@ provider "aws" {
 # Comment out this section if testing locally and do not want to use the S3 bucket
 # Remove the leading # to disable the backend
 #-------------------------------
-#/* Begin comment block - only need to remove the leading "#"
 terraform {
   backend "s3" {
+    bucket = "rcc-odm-terraform-state-2026"
     key    = "terraform.tfstate"
     region = "us-east-1"
   }
 }
-#End of comment block */
 #-------------------------------
 # VPC
 #-------------------------------

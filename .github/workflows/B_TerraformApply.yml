@@ -15,10 +15,6 @@ jobs:
       run:
         shell: bash
 
-    defaults:
-      run:
-        shell: bash
-
     steps:
     - name: Checkout repo
       uses: actions/checkout@v3

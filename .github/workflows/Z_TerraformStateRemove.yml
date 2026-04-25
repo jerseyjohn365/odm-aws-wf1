@@ -7,6 +7,10 @@ jobs:
     name: "Terraform state remove"
     runs-on: ubuntu-latest
 
+    permissions:
+      id-token: write
+      contents: read
+
     defaults:
       run:
         shell: bash
@@ -17,11 +21,11 @@ jobs:
     - name: Setup Terraform
       uses: hashicorp/setup-terraform@v1
     - name: Configure AWS Credentials
-      uses: aws-actions/configure-aws-credentials@v1
+      uses: aws-actions/configure-aws-credentials@v4
       with:
-        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+        role-session-name: terraform-state-remove
         aws-region: us-east-1
 
     - name: S3 remove bucket file
-      run: aws s3 rm s3://s3-22020215/terraform.tfstate
+      run: aws s3 rm s3://${{ secrets.BUCKET }}/terraform.tfstate

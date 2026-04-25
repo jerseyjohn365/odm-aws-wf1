@@ -18,7 +18,7 @@ provider "aws" {
 #-------------------------------
 terraform {
   backend "s3" {
-    bucket = "rcc-odm-terraform-state-2026"
+    # bucket is injected at init time via -backend-config="bucket=$BUCKET"
     key    = "terraform.tfstate"
     region = "us-east-1"
   }

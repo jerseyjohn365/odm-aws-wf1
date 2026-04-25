@@ -24,6 +24,7 @@ jobs:
       uses: aws-actions/configure-aws-credentials@v4
       with:
         role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+        role-session-name: terraform-apply
         aws-region: us-east-1
 
     - name: Terraform init

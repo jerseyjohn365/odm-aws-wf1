@@ -54,8 +54,8 @@ variable "ubuntu_image" {
 }
 variable "type_selector" {
   description = "Select the instance type size."
-  default     = "t3a-large"
-  #default = "m5a-4xlarge"
+  #default = "t3a-large"
+  default     = "m5a-4xlarge"
 }
 variable "instance_type" {
   description = "AWS instance types pulled February 2022. AMDs are a little cheaper to run."

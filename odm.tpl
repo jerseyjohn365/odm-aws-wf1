@@ -34,7 +34,7 @@ python3 /odm/run.py \
   --max-concurrency $(nproc) \
   --dsm \
   --dtm \
-  --radiometric-calibration camera
+  --radiometric-calibration camera+sun
 
 # Push deliverables to S3
 echo "=== Uploading results to s3://${data_bucket}/${output_prefix}/ ==="

@@ -45,7 +45,7 @@ jobs:
       run: |
         terraform apply \
           -auto-approve -input=false -no-color \
-          -var "pub_key_data=${{ secrets.WEBODM_PUB}}" 
+          -var "data_bucket=${{ secrets.DATA_BUCKET }}"
 
     - name: Terraform output
       id: output

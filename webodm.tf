@@ -5,7 +5,7 @@ provider "aws" {
   region = var.aws_region
   default_tags {
     tags = {
-      Name    = var.repo_name # Important to use capital "N" for Name as this will automatically display in the consoles default tag
+      Name    = var.repo_name
       Owner   = var.repo_owner
       Project = var.project
     }
@@ -13,8 +13,6 @@ provider "aws" {
 }
 #-------------------------------
 # S3 Remote State
-# Comment out this section if testing locally and do not want to use the S3 bucket
-# Remove the leading # to disable the backend
 #-------------------------------
 terraform {
   backend "s3" {
@@ -59,49 +57,11 @@ resource "aws_route_table_association" "public_1_rt_a" {
   route_table_id = aws_route_table.public_rt.id
 }
 #-------------------------------
-# Security Group
+# Security Group — outbound only, no inbound needed
 #-------------------------------
 resource "aws_security_group" "odm" {
-  name   = "SSH and ODM"
+  name   = "ODM processing"
   vpc_id = aws_vpc.odm.id
-   /* Add "#" to the beginning of this line to open port 22 if needed.
-  ingress {
-    description = "SSH"
-    from_port   = 22
-    to_port     = 22
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
-  } # */
-  ingress {
-    description = "WebODM"
-    from_port   = 8000
-    to_port     = 8000
-    protocol    = "tcp"
-    cidr_blocks = ["47.186.10.128/32"]
-  }
-  ingress {
-    description = "ClusterODM"
-    from_port   = 8001
-    to_port     = 8001
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-  /* only if direct access is needed to nodes
-  ingress {
-    description = "nodeODM"
-    from_port = 3000
-    to_port = 3000
-    protocol = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-  # */
-  ingress {
-    description = "internal"
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
-    cidr_blocks = [var.public_subnet]
-  }
   egress {
     from_port   = 0
     to_port     = 0
@@ -110,66 +70,73 @@ resource "aws_security_group" "odm" {
   }
 }
 #-------------------------------
-# EC2 instance
+# IAM — instance profile grants S3 read/write
 #-------------------------------
+resource "aws_iam_role" "odm_instance" {
+  name = "${var.repo_name}-instance-role"
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect    = "Allow"
+      Principal = { Service = "ec2.amazonaws.com" }
+      Action    = "sts:AssumeRole"
+    }]
+  })
+}
+resource "aws_iam_role_policy" "odm_s3" {
+  name = "${var.repo_name}-s3-access"
+  role = aws_iam_role.odm_instance.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect = "Allow"
+      Action = [
+        "s3:GetObject",
+        "s3:PutObject",
+        "s3:ListBucket",
+        "s3:DeleteObject"
+      ]
+      Resource = [
+        "arn:aws:s3:::${var.data_bucket}",
+        "arn:aws:s3:::${var.data_bucket}/*"
+      ]
+    }]
+  })
+}
+resource "aws_iam_instance_profile" "odm" {
+  name = "${var.repo_name}-instance-profile"
+  role = aws_iam_role.odm_instance.name
+}
 #-------------------------------
-# AMI reference
+# AMI — latest Ubuntu 22.04 LTS
 #-------------------------------
 data "aws_ami" "ubuntu" {
   most_recent = true
   filter {
     name   = "name"
-    values = [lookup(var.ubuntu_image, var.ami_selector)]
+    values = ["ubuntu/images/hvm-ssd/ubuntu-jammy-22.04-amd64-server-*"]
   }
   filter {
     name   = "virtualization-type"
     values = ["hvm"]
   }
-  owners = ["099720109477"] # Canonical
+  owners = ["099720109477"]
 }
 #-------------------------------
-# Get cloud-init template file
+# EC2 — ODM processing instance
 #-------------------------------
-data "template_file" "webodm" {
-  template = file("webodm.tpl")
-  vars = {
-    ssh_key = var.pub_key_data
-  }
-}
-data "template_file" "nodeodm" {
-  template = file("nodeodm.tpl")
-  vars = {
-    ssh_key = var.pub_key_data
-  }
-}
-#-------------------------------
-# EC2 instance WebODM
-#-------------------------------
-resource "aws_instance" "webodm" {
-  count                       = var.webodm_count
+resource "aws_instance" "odm" {
   ami                         = data.aws_ami.ubuntu.id
   instance_type               = lookup(var.instance_type, var.type_selector)
-  key_name                    = var.pub_key
   subnet_id                   = aws_subnet.odm_public_subnet.id
   vpc_security_group_ids      = [aws_security_group.odm.id]
   associate_public_ip_address = true
-  user_data                   = data.template_file.webodm.rendered
-  root_block_device {
-    volume_size = var.rootBlockSize
-  }
-}
-#-------------------------------
-# EC2 instance nodeodm
-#-------------------------------
-resource "aws_instance" "nodeodm" {
-  count                       = var.nodeodm_count
-  ami                         = data.aws_ami.ubuntu.id
-  instance_type               = lookup(var.instance_type, var.type_selector)
-  key_name                    = var.pub_key
-  subnet_id                   = aws_subnet.odm_public_subnet.id
-  vpc_security_group_ids      = [aws_security_group.odm.id]
-  associate_public_ip_address = true
-  user_data                   = data.template_file.nodeodm.rendered
+  iam_instance_profile        = aws_iam_instance_profile.odm.name
+  user_data                   = templatefile("odm.tpl", {
+    data_bucket   = var.data_bucket
+    input_prefix  = var.input_prefix
+    output_prefix = var.output_prefix
+  })
   root_block_device {
     volume_size = var.rootBlockSize
   }

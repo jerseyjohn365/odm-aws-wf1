@@ -1,9 +1,6 @@
-output "WebODM_public_ip" {
-  value = aws_instance.webodm.*.public_ip
+output "instance_id" {
+  value = aws_instance.odm.id
 }
-output "ClusterODM_internal_ip" {
-  value = aws_instance.webodm.*.private_ip
-}
-output "NodeODM_internal_ip" {
-  value = aws_instance.nodeodm.*.private_ip
+output "public_ip" {
+  value = aws_instance.odm.public_ip
 }

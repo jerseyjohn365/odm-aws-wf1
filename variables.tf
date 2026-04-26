@@ -41,7 +41,7 @@ variable "public_subnet" {
 }
 variable "type_selector" {
   description = "Select the instance type"
-  default     = "t2-micro"
+  default     = "m5a-4xlarge"
 }
 variable "instance_type" {
   description = "AMD instances — no Docker overhead means full RAM goes to ODM"

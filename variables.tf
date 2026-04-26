@@ -17,10 +17,10 @@ variable "pub_key_data" {
 variable "aws_region" {
   description = "geographical location of infrastructure"
   type        = string
-  default     = "us-east-1"
+  default     = "us-east-2"
 }
 variable "avail_zone" {
-  default = "us-east-1a"
+  default = "us-east-2a"
 }
 variable "webodm_count" {
   description = "Number of WebODM instances"

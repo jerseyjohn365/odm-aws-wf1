@@ -25,7 +25,7 @@ jobs:
       with:
         role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
         role-session-name: terraform-state-remove
-        aws-region: us-east-1
+        aws-region: us-east-2
 
     - name: S3 remove bucket file
       run: aws s3 rm s3://${{ secrets.BUCKET }}/terraform.tfstate

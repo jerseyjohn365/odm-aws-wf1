@@ -41,13 +41,15 @@ variable "public_subnet" {
 }
 variable "type_selector" {
   description = "Select the instance type"
-  default     = "m5a-4xlarge"
+  default     = "t3-micro"
 }
 variable "instance_type" {
   description = "AMD instances — no Docker overhead means full RAM goes to ODM"
   type        = map(string)
   default = {
-    m5a-2xlarge = "m5a.2xlarge"  # 8 vCPUs,  32 GiB, ~$0.34/hr — small test jobs
+    t3-micro    = "t3.micro"     # 2 vCPUs, 1 GiB,  free tier — pipeline testing only
+    t3-small    = "t3.small"     # 2 vCPUs, 2 GiB,  ~$0.02/hr
+    m5a-2xlarge = "m5a.2xlarge"  # 8 vCPUs, 32 GiB, ~$0.34/hr — small jobs
     m5a-4xlarge = "m5a.4xlarge"  # 16 vCPUs, 64 GiB, ~$0.69/hr — default
     m5a-8xlarge = "m5a.8xlarge"  # 32 vCPUs, 128 GiB, ~$1.38/hr — large surveys
   }

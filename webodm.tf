@@ -20,7 +20,7 @@ terraform {
   backend "s3" {
     # bucket is injected at init time via -backend-config="bucket=$BUCKET"
     key    = "terraform.tfstate"
-    region = "us-east-1"
+    region = "us-east-2"
   }
 }
 #-------------------------------

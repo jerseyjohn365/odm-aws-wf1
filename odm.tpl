@@ -3,6 +3,9 @@ set -euo pipefail
 export DEBIAN_FRONTEND=noninteractive
 exec > >(tee /var/log/odm-processing.log) 2>&1
 
+# Always upload log and shut down on exit, success or failure
+trap 'aws s3 cp /var/log/odm-processing.log s3://${data_bucket}/logs/odm-processing.log 2>/dev/null || true; shutdown -h now' EXIT
+
 echo "=== ODM processing instance starting $(date) ==="
 
 # Base dependencies

@@ -26,11 +26,11 @@ docker run --rm \
   -v /datasets:/datasets \
   opendronemap/odm \
   --project-path /datasets \
-  --name project \
   --max-concurrency $(nproc) \
   --dsm \
   --dtm \
-  --radiometric-calibration camera+sun
+  --radiometric-calibration camera+sun \
+  project
 
 # Push deliverables to S3
 echo "=== Uploading results to s3://${data_bucket}/${output_prefix}/ ==="

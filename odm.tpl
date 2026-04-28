@@ -12,6 +12,21 @@ apt-get install -y --no-install-recommends awscli docker.io
 # Trap fires on any exit — uploads log then shuts down
 trap 'aws s3 cp /var/log/odm-processing.log s3://${data_bucket}/logs/odm-processing.log 2>/dev/null || true; shutdown -h now' EXIT
 
+# Poll for spot interruption notice every 5 seconds in background
+# Writes SPOT_INTERRUPTED to log so you know it wasn't an error
+(
+  while true; do
+    STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+      http://169.254.169.254/latest/meta-data/spot/termination-time)
+    if [ "$STATUS" = "200" ]; then
+      echo "=== SPOT INSTANCE RECLAIMED BY AWS — not an error, rerun the job ==="
+      exit 0
+    fi
+    sleep 5
+  done
+) &
+SPOT_MONITOR_PID=$!
+
 # Pull and run ODM — single container, no web UI
 mkdir -p /datasets/project/images
 

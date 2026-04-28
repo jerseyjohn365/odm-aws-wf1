@@ -133,6 +133,13 @@ resource "aws_instance" "odm" {
   associate_public_ip_address              = true
   iam_instance_profile                     = aws_iam_instance_profile.odm.name
   instance_initiated_shutdown_behavior     = "terminate"
+
+  instance_market_options {
+    market_type = "spot"
+    spot_options {
+      instance_interruption_behavior = "terminate"
+    }
+  }
   user_data                   = templatefile("odm.tpl", {
     data_bucket   = var.data_bucket
     input_prefix  = var.input_prefix

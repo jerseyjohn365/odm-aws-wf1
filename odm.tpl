@@ -9,8 +9,16 @@ echo "=== ODM processing instance starting $(date) ==="
 apt-get update -y
 apt-get install -y --no-install-recommends awscli docker.io
 
-# Trap fires on any exit — uploads log then shuts down
-trap 'aws s3 cp /var/log/odm-processing.log s3://${data_bucket}/logs/odm-processing.log 2>/dev/null || true; shutdown -h now' EXIT
+# Trap fires on any exit — always sync deliverables and upload log before shutdown
+trap '
+  echo "=== Syncing deliverables to S3 ==="
+  aws s3 sync /datasets/project/ s3://${data_bucket}/${output_prefix}/ \
+    --exclude "images/*" \
+    --exclude "opensfm/undistorted/*" \
+    --exclude "*.tmp" 2>/dev/null || true
+  aws s3 cp /var/log/odm-processing.log s3://${data_bucket}/logs/odm-processing.log 2>/dev/null || true
+  shutdown -h now
+' EXIT
 
 # Poll for spot interruption notice every 5 seconds in background
 # Writes SPOT_INTERRUPTED to log so you know it wasn't an error
@@ -48,12 +56,4 @@ docker run --rm \
   --skip-report \
   project
 
-# Push deliverables to S3
-echo "=== Uploading results to s3://${data_bucket}/${output_prefix}/ ==="
-aws s3 sync /datasets/project/ s3://${data_bucket}/${output_prefix}/ \
-  --exclude "images/*" \
-  --exclude "opensfm/undistorted/*" \
-  --exclude "*.tmp"
-
 echo "=== Done $(date) ==="
-shutdown -h now

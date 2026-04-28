@@ -31,7 +31,7 @@ jobs:
       run: |
         terraform init \
           -input=false -no-color \
-          -backend-config="bucket=${{ secrets.BUCKET}}"
+          -backend-config="bucket=${{ secrets.BUCKET}}" \
           -backend-config="region=us-east-2"
 
     - name: Terraform validation

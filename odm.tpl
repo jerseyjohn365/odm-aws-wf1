@@ -8,30 +8,22 @@ trap 'aws s3 cp /var/log/odm-processing.log s3://${data_bucket}/logs/odm-process
 
 echo "=== ODM processing instance starting $(date) ==="
 
-# Base dependencies
-apt-get update -y
-apt-get install -y --no-install-recommends git curl unzip python3-pip python3-dev build-essential
+# Install Docker and AWS CLI v2
+apt-get install -y --no-install-recommends docker.io awscli
 
-# AWS CLI v2
-curl -fsSL "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o /tmp/awscliv2.zip
-unzip -q /tmp/awscliv2.zip -d /tmp
-/tmp/aws/install
-rm -rf /tmp/awscliv2.zip /tmp/aws
-
-# Install ODM natively
-git clone https://github.com/OpenDroneMap/ODM --depth 1 /odm
-cd /odm
-bash configure.sh install
-
-# Pull images from S3
+# Pull and run ODM — single container, no web UI
 mkdir -p /datasets/project/images
+
+# Pull input images from S3
 echo "=== Pulling images from s3://${data_bucket}/${input_prefix}/ ==="
 aws s3 sync s3://${data_bucket}/${input_prefix}/ /datasets/project/images/
 echo "=== $(find /datasets/project/images -type f | wc -l) images ready ==="
 
-# Run ODM — full multispectral pipeline
+# Run ODM
 echo "=== Starting ODM $(date) ==="
-python3 /odm/run.py \
+docker run --rm \
+  -v /datasets:/datasets \
+  opendronemap/odm \
   --project-path /datasets \
   --name project \
   --max-concurrency $(nproc) \

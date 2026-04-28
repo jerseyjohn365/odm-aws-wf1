@@ -21,12 +21,9 @@ trap '
 ' EXIT
 
 # Poll for spot interruption notice every 5 seconds in background
-# Writes SPOT_INTERRUPTED to log so you know it wasn't an error
 (
   while true; do
-    STATUS=$(curl -s -o /dev/null -w "%%{http_code}" \
-      http://169.254.169.254/latest/meta-data/spot/termination-time)
-    if [ "$STATUS" = "200" ]; then
+    if curl -s -f http://169.254.169.254/latest/meta-data/spot/termination-time 2>/dev/null; then
       echo "=== SPOT INSTANCE RECLAIMED BY AWS — not an error, rerun the job ==="
       exit 0
     fi

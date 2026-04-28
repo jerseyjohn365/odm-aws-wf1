@@ -42,14 +42,14 @@ variable "public_subnet" {
   default = "192.168.1.0/24"
 }
 variable "ami_selector" {
-  description = "Ubuntu version to use. Bionic 18.04 LTS or Focal 20.04 LTS"
-  default     = "bionic"
+  description = "Ubuntu version to use. Focal 20.04 LTS or Jammy 22.04 LTS"
+  default     = "jammy"
 }
 variable "ubuntu_image" {
   type = map(any)
   default = {
-    bionic = "ubuntu/images/hvm-ssd/ubuntu-bionic-18.04-amd64-server-*"
     focal  = "ubuntu/images/hvm-ssd/ubuntu-focal-20.04-amd64-server-*"
+    jammy  = "ubuntu/images/hvm-ssd/ubuntu-jammy-22.04-amd64-server-*"
   }
 }
 variable "type_selector" {

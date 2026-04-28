@@ -3,13 +3,14 @@ set -euo pipefail
 export DEBIAN_FRONTEND=noninteractive
 exec > >(tee /var/log/odm-processing.log) 2>&1
 
-# Always upload log and shut down on exit, success or failure
-trap 'aws s3 cp /var/log/odm-processing.log s3://${data_bucket}/logs/odm-processing.log 2>/dev/null || true; shutdown -h now' EXIT
-
 echo "=== ODM processing instance starting $(date) ==="
 
-# Install Docker and AWS CLI v2
-apt-get install -y --no-install-recommends docker.io awscli
+# Install awscli first so the EXIT trap can upload the log
+apt-get update -y
+apt-get install -y --no-install-recommends awscli docker.io
+
+# Trap fires on any exit — uploads log then shuts down
+trap 'aws s3 cp /var/log/odm-processing.log s3://${data_bucket}/logs/odm-processing.log 2>/dev/null || true; shutdown -h now' EXIT
 
 # Pull and run ODM — single container, no web UI
 mkdir -p /datasets/project/images

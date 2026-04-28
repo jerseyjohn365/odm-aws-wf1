@@ -108,25 +108,16 @@ resource "aws_iam_instance_profile" "odm" {
   role = aws_iam_role.odm_instance.name
 }
 #-------------------------------
-# AMI — latest Ubuntu 22.04 LTS
+# AMI — latest Ubuntu 22.04 LTS via SSM public parameter
 #-------------------------------
-data "aws_ami" "ubuntu" {
-  most_recent = true
-  filter {
-    name   = "name"
-    values = ["ubuntu/images/hvm-ssd/ubuntu-jammy-22.04-amd64-server-*"]
-  }
-  filter {
-    name   = "virtualization-type"
-    values = ["hvm"]
-  }
-  owners = ["099720109477"]
+data "aws_ssm_parameter" "ubuntu_ami" {
+  name = "/aws/service/canonical/ubuntu/server/22.04/stable/current/amd64/hvm/ebs-gp2/ami-id"
 }
 #-------------------------------
 # EC2 — ODM processing instance
 #-------------------------------
 resource "aws_instance" "odm" {
-  ami                         = data.aws_ami.ubuntu.id
+  ami                         = data.aws_ssm_parameter.ubuntu_ami.value
   instance_type               = lookup(var.instance_type, var.type_selector)
   subnet_id                   = aws_subnet.odm_public_subnet.id
   vpc_security_group_ids      = [aws_security_group.odm.id]

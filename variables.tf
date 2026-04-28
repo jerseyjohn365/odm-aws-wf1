@@ -2,7 +2,7 @@ variable "repo_name" {
   default = "odm-aws-wf1"
 }
 variable "repo_owner" {
-  default = "kendrickcc"
+  default = "jerseyjohn365"
 }
 variable "project" {
   default = "ODM 1600 S Hwy UU"

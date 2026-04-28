@@ -45,6 +45,7 @@ docker run --rm \
   --dsm \
   --dtm \
   --radiometric-calibration camera+sun \
+  --skip-report \
   project
 
 # Push deliverables to S3

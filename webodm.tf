@@ -72,16 +72,6 @@ resource "aws_security_group" "odm" {
 #-------------------------------
 # IAM — instance profile grants S3 read/write
 #-------------------------------
-import {
-  to = aws_iam_role.odm_instance
-  id = "odm-aws-wf1-instance-role"
-}
-
-import {
-  to = aws_iam_instance_profile.odm
-  id = "odm-aws-wf1-instance-profile"
-}
-
 resource "aws_iam_role" "odm_instance" {
   name = "${var.repo_name}-instance-role"
   assume_role_policy = jsonencode({

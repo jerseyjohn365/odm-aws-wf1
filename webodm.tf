@@ -131,9 +131,8 @@ resource "aws_instance" "odm" {
   instance_type               = lookup(var.instance_type, var.type_selector)
   subnet_id                   = aws_subnet.odm_public_subnet.id
   vpc_security_group_ids      = [aws_security_group.odm.id]
-  associate_public_ip_address              = true
-  iam_instance_profile                     = aws_iam_instance_profile.odm.name
-  instance_initiated_shutdown_behavior     = "terminate"
+  associate_public_ip_address = true
+  iam_instance_profile        = aws_iam_instance_profile.odm.name
 
   instance_market_options {
     market_type = "spot"

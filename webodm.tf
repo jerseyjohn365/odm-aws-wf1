@@ -110,6 +110,26 @@ resource "aws_security_group" "odm" {
   }
 }
 #-------------------------------
+# IAM Role for EC2 instances
+#-------------------------------
+resource "aws_iam_role" "odm_instance" {
+  name = "${var.repo_name}-instance-role"
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Action    = "sts:AssumeRole"
+      Effect    = "Allow"
+      Principal = { Service = "ec2.amazonaws.com" }
+    }]
+  })
+}
+
+resource "aws_iam_instance_profile" "odm_instance" {
+  name = "${var.repo_name}-instance-profile"
+  role = aws_iam_role.odm_instance.name
+}
+
+#-------------------------------
 # EC2 instance
 #-------------------------------
 #-------------------------------
@@ -153,6 +173,7 @@ resource "aws_instance" "webodm" {
   subnet_id                   = aws_subnet.odm_public_subnet.id
   vpc_security_group_ids      = [aws_security_group.odm.id]
   associate_public_ip_address = true
+  iam_instance_profile        = aws_iam_instance_profile.odm_instance.name
   user_data                   = data.template_file.webodm.rendered
   root_block_device {
     volume_size = var.rootBlockSize
@@ -169,6 +190,7 @@ resource "aws_instance" "nodeodm" {
   subnet_id                   = aws_subnet.odm_public_subnet.id
   vpc_security_group_ids      = [aws_security_group.odm.id]
   associate_public_ip_address = true
+  iam_instance_profile        = aws_iam_instance_profile.odm_instance.name
   user_data                   = data.template_file.nodeodm.rendered
   root_block_device {
     volume_size = var.rootBlockSize

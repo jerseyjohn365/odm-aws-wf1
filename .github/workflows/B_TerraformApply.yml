@@ -19,7 +19,9 @@ jobs:
     - name: Checkout repo
       uses: actions/checkout@v3
     - name: Setup Terraform
-      uses: hashicorp/setup-terraform@v1
+      uses: hashicorp/setup-terraform@v2
+      with:
+        terraform_wrapper: false
     - name: Configure AWS Credentials
       uses: aws-actions/configure-aws-credentials@v4
       with:
@@ -31,7 +33,7 @@ jobs:
       id: init
       run: |
         terraform init \
-          -input=false -no-color \
+          -reconfigure -input=false -no-color \
           -backend-config="bucket=${{ secrets.BUCKET}}"
 
     - name: Terraform validation

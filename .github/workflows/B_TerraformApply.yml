@@ -29,18 +29,18 @@ jobs:
         role-session-name: terraform-apply
         aws-region: us-east-2
 
+    - name: Terraform validate
+      id: validate
+      run: |
+        terraform init -backend=false -no-color
+        terraform validate -no-color
+
     - name: Terraform init
       id: init
       run: |
         terraform init \
           -reconfigure -input=false -no-color \
           -backend-config="bucket=${{ secrets.BUCKET}}"
-
-    - name: Terraform validation
-      id: validate
-      run: |
-        terraform validate \
-          -no-color
 
     - name: Terraform apply
       id: apply

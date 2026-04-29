@@ -44,7 +44,7 @@ echo "=== $(find /datasets/project/images -type f | wc -l) images ready ==="
 echo "=== Starting ODM $(date) ==="
 docker run --rm \
   -v /datasets:/datasets \
-  opendronemap/odm:3.5.0 \
+  opendronemap/odm:latest \
   --project-path /datasets \
   --max-concurrency $(nproc) \
   --dsm \

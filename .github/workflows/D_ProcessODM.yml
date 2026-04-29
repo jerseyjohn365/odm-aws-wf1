@@ -1,0 +1,109 @@
+name: D - Process ODM
+
+on:
+  workflow_dispatch:
+    inputs:
+      instance_id:
+        description: "EC2 instance ID to run ODM on"
+        required: true
+      s3_input:
+        description: "S3 URI for input images (e.g. s3://rcc-processing/input)"
+        required: false
+        default: "s3://rcc-processing/input"
+      s3_output:
+        description: "S3 URI for ODM deliverables (e.g. s3://rcc-processing/output)"
+        required: false
+        default: "s3://rcc-processing/output"
+
+jobs:
+  process:
+    name: "Run ODM on EC2"
+    runs-on: ubuntu-latest
+
+    permissions:
+      id-token: write
+      contents: read
+
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+    - name: Checkout repo
+      uses: actions/checkout@v3
+
+    - name: Configure AWS Credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+        aws-region: us-east-2
+
+    - name: Upload processing script to EC2 via SSM
+      run: |
+        SCRIPT=$(cat scripts/process_odm.sh | base64 -w 0)
+        aws ssm send-command \
+          --instance-ids "${{ github.event.inputs.instance_id }}" \
+          --document-name "AWS-RunShellScript" \
+          --parameters "commands=[
+            'echo $SCRIPT | base64 -d > /tmp/process_odm.sh',
+            'chmod +x /tmp/process_odm.sh'
+          ]" \
+          --output text \
+          --query "Command.CommandId"
+
+    - name: Run ODM processing via SSM
+      id: run_odm
+      run: |
+        CMD_ID=$(aws ssm send-command \
+          --instance-ids "${{ github.event.inputs.instance_id }}" \
+          --document-name "AWS-RunShellScript" \
+          --parameters "commands=[
+            'export S3_INPUT=${{ github.event.inputs.s3_input }}',
+            'export S3_OUTPUT=${{ github.event.inputs.s3_output }}',
+            'export WORK_DIR=/opt/odm',
+            'bash /tmp/process_odm.sh 2>&1 | tee /var/log/odm_process.log'
+          ]" \
+          --timeout-seconds 86400 \
+          --output text \
+          --query "Command.CommandId")
+        echo "command_id=$CMD_ID" >> "$GITHUB_OUTPUT"
+        echo "SSM Command ID: $CMD_ID"
+
+    - name: Wait for ODM to complete
+      run: |
+        CMD_ID="${{ steps.run_odm.outputs.command_id }}"
+        INSTANCE="${{ github.event.inputs.instance_id }}"
+        echo "Waiting for command $CMD_ID ..."
+        for i in $(seq 1 360); do
+          STATUS=$(aws ssm get-command-invocation \
+            --command-id "$CMD_ID" \
+            --instance-id "$INSTANCE" \
+            --query "Status" \
+            --output text 2>/dev/null || echo "Pending")
+          echo "[$i/360] Status: $STATUS"
+          if [ "$STATUS" = "Success" ]; then
+            echo "ODM processing completed successfully."
+            exit 0
+          elif [ "$STATUS" = "Failed" ] || [ "$STATUS" = "Cancelled" ] || [ "$STATUS" = "TimedOut" ]; then
+            aws ssm get-command-invocation \
+              --command-id "$CMD_ID" \
+              --instance-id "$INSTANCE" \
+              --query "StandardErrorContent" \
+              --output text
+            echo "ODM processing failed with status: $STATUS"
+            exit 1
+          fi
+          sleep 60
+        done
+        echo "Timed out waiting for ODM to complete."
+        exit 1
+
+    - name: Fetch ODM log tail
+      if: always()
+      run: |
+        aws ssm send-command \
+          --instance-ids "${{ github.event.inputs.instance_id }}" \
+          --document-name "AWS-RunShellScript" \
+          --parameters "commands=['tail -100 /var/log/odm_process.log || echo no log found']" \
+          --output text \
+          --query "Command.CommandId" > /dev/null

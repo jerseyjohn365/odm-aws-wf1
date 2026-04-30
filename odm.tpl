@@ -52,7 +52,9 @@ echo "=== MS:  $(find /datasets/project_ms/images  -type f | wc -l) TIFs ==="
 
 # Pass 1 — RGB orthophoto + PNG (only if wide-camera JPGs were found)
 RGB_COUNT=$(find /datasets/project_rgb/images -type f | wc -l)
-if [ "$RGB_COUNT" -gt 0 ]; then
+echo "=== project_rgb/images contents: ==="
+ls /datasets/project_rgb/images | head -20 || true
+if [ "$RGB_COUNT" -gt 4 ]; then
   echo "=== Starting ODM RGB pass ($RGB_COUNT images) $(date) ==="
   docker run --rm \
     -v /datasets:/datasets \
@@ -63,10 +65,10 @@ if [ "$RGB_COUNT" -gt 0 ]; then
     --dtm \
     --orthophoto-png \
     --skip-report \
-    project_rgb
+    project_rgb || echo "=== WARNING: RGB pass failed, continuing to MS pass ==="
   echo "=== RGB pass done $(date) ==="
 else
-  echo "=== No wide-camera JPGs found, skipping RGB ODM pass ==="
+  echo "=== Skipping RGB ODM pass ($RGB_COUNT images found, need >4) ==="
 fi
 
 # Pass 2 — multispectral orthophoto

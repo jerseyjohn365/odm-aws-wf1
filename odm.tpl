@@ -12,7 +12,11 @@ apt-get install -y --no-install-recommends awscli docker.io python3-gdal
 # Trap fires on any exit — always sync deliverables and upload log before shutdown
 trap '
   echo "=== Syncing deliverables to S3 ==="
-  aws s3 sync /datasets/project/ s3://${data_bucket}/${output_prefix}/ \
+  aws s3 sync /datasets/project_rgb/ s3://${data_bucket}/${output_prefix}/rgb/ \
+    --exclude "images/*" \
+    --exclude "opensfm/undistorted/*" \
+    --exclude "*.tmp" 2>/dev/null || true
+  aws s3 sync /datasets/project_ms/ s3://${data_bucket}/${output_prefix}/ms/ \
     --exclude "images/*" \
     --exclude "opensfm/undistorted/*" \
     --exclude "*.tmp" 2>/dev/null || true
@@ -32,16 +36,22 @@ trap '
 ) &
 SPOT_MONITOR_PID=$!
 
-# Pull and run ODM — single container, no web UI
-mkdir -p /datasets/project/images
+# Pull and run ODM — two passes, RGB and multispectral
+mkdir -p /datasets/project_rgb/images /datasets/project_ms/images
 
 # Pull input images from S3
 echo "=== Pulling images from s3://${data_bucket}/${input_prefix}/ ==="
-aws s3 sync s3://${data_bucket}/${input_prefix}/ /datasets/project/images/
-echo "=== $(find /datasets/project/images -type f | wc -l) images ready ==="
+aws s3 sync s3://${data_bucket}/${input_prefix}/ /datasets/images_raw/
+echo "=== $(find /datasets/images_raw -type f | wc -l) images downloaded ==="
 
-# Run ODM
-echo "=== Starting ODM $(date) ==="
+# Split by extension
+find /datasets/images_raw -iname "*.jpg" -exec cp {} /datasets/project_rgb/images/ \;
+find /datasets/images_raw -iname "*.tif" -exec cp {} /datasets/project_ms/images/ \;
+echo "=== RGB: $(find /datasets/project_rgb/images -type f | wc -l) JPGs ==="
+echo "=== MS:  $(find /datasets/project_ms/images  -type f | wc -l) TIFs ==="
+
+# Pass 1 — RGB orthophoto + PNG for portfolio
+echo "=== Starting ODM RGB pass $(date) ==="
 docker run --rm \
   -v /datasets:/datasets \
   opendronemap/odm:latest \
@@ -49,32 +59,52 @@ docker run --rm \
   --max-concurrency $(nproc) \
   --dsm \
   --dtm \
+  --orthophoto-png \
+  --skip-report \
+  project_rgb
+echo "=== RGB pass done $(date) ==="
+
+# Pass 2 — multispectral orthophoto
+echo "=== Starting ODM multispectral pass $(date) ==="
+docker run --rm \
+  -v /datasets:/datasets \
+  opendronemap/odm:latest \
+  --project-path /datasets \
+  --max-concurrency $(nproc) \
+  --dsm \
+  --dtm \
+  --primary-band NIR \
   --radiometric-calibration camera+sun \
   --skip-report \
-  project
+  project_ms
+echo "=== Multispectral pass done $(date) ==="
 
-echo "=== Done $(date) ==="
-
-# Compute NDVI from the multispectral orthophoto
-# DJI M3M band order in ODM output: 1=Blue 2=Green 3=Red 4=RedEdge 5=NIR
-ORTHO=/datasets/project/odm_orthophoto/odm_orthophoto.tif
+# Compute NDVI from multispectral orthophoto
+# ODM band order with --primary-band NIR: 1=Red 2=Green 3=NIR 4=RedEdge (Blue dropped as redundant)
+ORTHO=/datasets/project_ms/odm_orthophoto/odm_orthophoto.tif
 if [ -f "$ORTHO" ]; then
   BAND_COUNT=$(gdalinfo "$ORTHO" | grep -c "^Band [0-9]")
-  echo "=== Orthophoto has $BAND_COUNT band(s) ==="
-  if [ "$BAND_COUNT" -ge 5 ]; then
+  echo "=== Multispectral orthophoto has $BAND_COUNT band(s) ==="
+  if [ "$BAND_COUNT" -ge 3 ]; then
     echo "=== Computing NDVI ==="
+    # Identify NIR and Red band numbers from gdalinfo (band number and description are on separate lines)
+    NIR_BAND=$(gdalinfo "$ORTHO" | awk '/^Band [0-9]/{band=$2} /Description = NIR/{print band; exit}')
+    RED_BAND=$(gdalinfo "$ORTHO" | awk '/^Band [0-9]/{band=$2} /Description = Red$/{print band; exit}')
+    NIR_BAND="${NIR_BAND:-3}"
+    RED_BAND="${RED_BAND:-1}"
+    echo "=== Using NIR=band${NIR_BAND} Red=band${RED_BAND} ==="
     gdal_calc.py \
-      -A "$ORTHO" --A_band=5 \
-      -B "$ORTHO" --B_band=3 \
-      --outfile=/datasets/project/odm_orthophoto/ndvi.tif \
+      -A "$ORTHO" --A_band="${NIR_BAND}" \
+      -B "$ORTHO" --B_band="${RED_BAND}" \
+      --outfile=/datasets/project_ms/odm_orthophoto/ndvi.tif \
       --calc="(A.astype(float)-B.astype(float))/(A.astype(float)+B.astype(float))" \
       --NoDataValue=-9999 \
       --type=Float32 \
       --overwrite
     echo "=== NDVI complete ==="
   else
-    echo "=== WARNING: expected 5 bands for NDVI, got $BAND_COUNT — skipping ==="
+    echo "=== WARNING: only $BAND_COUNT band(s) found — skipping NDVI ==="
   fi
 else
-  echo "=== WARNING: orthophoto not found at $ORTHO ==="
+  echo "=== WARNING: multispectral orthophoto not found at $ORTHO ==="
 fi

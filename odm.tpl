@@ -90,12 +90,12 @@ if [ -f "$ORTHO" ]; then
     # Identify NIR and Red band numbers from gdalinfo (band number and description are on separate lines)
     NIR_BAND=$(gdalinfo "$ORTHO" | awk '/^Band [0-9]/{band=$2} /Description = NIR/{print band; exit}')
     RED_BAND=$(gdalinfo "$ORTHO" | awk '/^Band [0-9]/{band=$2} /Description = Red$/{print band; exit}')
-    NIR_BAND="${NIR_BAND:-3}"
-    RED_BAND="${RED_BAND:-1}"
-    echo "=== Using NIR=band${NIR_BAND} Red=band${RED_BAND} ==="
+    NIR_BAND="$${NIR_BAND:-3}"
+    RED_BAND="$${RED_BAND:-1}"
+    echo "=== Using NIR=band$${NIR_BAND} Red=band$${RED_BAND} ==="
     gdal_calc.py \
-      -A "$ORTHO" --A_band="${NIR_BAND}" \
-      -B "$ORTHO" --B_band="${RED_BAND}" \
+      -A "$ORTHO" --A_band="$${NIR_BAND}" \
+      -B "$ORTHO" --B_band="$${RED_BAND}" \
       --outfile=/datasets/project_ms/odm_orthophoto/ndvi.tif \
       --calc="(A.astype(float)-B.astype(float))/(A.astype(float)+B.astype(float))" \
       --NoDataValue=-9999 \

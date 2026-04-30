@@ -44,7 +44,7 @@ echo "=== Pulling images from s3://${data_bucket}/${input_prefix}/ ==="
 aws s3 sync s3://${data_bucket}/${input_prefix}/ /datasets/images_raw/
 echo "=== $(find /datasets/images_raw -type f | wc -l) images downloaded ==="
 echo "=== Extensions present: $(find /datasets/images_raw -type f | sed 's/.*\.//' | sort -u | tr '\n' ' ') ==="
-echo "=== Sample filenames: ===" && ls /datasets/images_raw | head -5
+echo "=== Sample filenames: ===" && ls /datasets/images_raw | head -5 || true
 
 # Split by filename pattern — DJI M3M: _W.JPG = RGB wide, _MS_*.TIF = multispectral bands
 find /datasets/images_raw -iname "*_D.JPG" -exec cp {} /datasets/project_rgb/images/ \;

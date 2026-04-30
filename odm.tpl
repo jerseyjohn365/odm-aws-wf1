@@ -45,7 +45,7 @@ aws s3 sync s3://${data_bucket}/${input_prefix}/ /datasets/images_raw/
 echo "=== $(find /datasets/images_raw -type f | wc -l) images downloaded ==="
 
 # Split by filename pattern — DJI M3M: _W.JPG = RGB wide, _MS_*.TIF = multispectral bands
-find /datasets/images_raw -iname "*_W.JPG" -exec cp {} /datasets/project_rgb/images/ \;
+find /datasets/images_raw -iname "*_D.JPG" -exec cp {} /datasets/project_rgb/images/ \;
 find /datasets/images_raw -iname "*_MS_*.TIF" -exec cp {} /datasets/project_ms/images/ \;
 echo "=== RGB: $(find /datasets/project_rgb/images -type f | wc -l) JPGs ==="
 echo "=== MS:  $(find /datasets/project_ms/images  -type f | wc -l) TIFs ==="

@@ -50,19 +50,24 @@ find /datasets/images_raw -iname "*_MS_*.TIF" -exec cp {} /datasets/project_ms/i
 echo "=== RGB: $(find /datasets/project_rgb/images -type f | wc -l) JPGs ==="
 echo "=== MS:  $(find /datasets/project_ms/images  -type f | wc -l) TIFs ==="
 
-# Pass 1 — RGB orthophoto + PNG for portfolio
-echo "=== Starting ODM RGB pass $(date) ==="
-docker run --rm \
-  -v /datasets:/datasets \
-  opendronemap/odm:latest \
-  --project-path /datasets \
-  --max-concurrency $(nproc) \
-  --dsm \
-  --dtm \
-  --orthophoto-png \
-  --skip-report \
-  project_rgb
-echo "=== RGB pass done $(date) ==="
+# Pass 1 — RGB orthophoto + PNG (only if wide-camera JPGs were found)
+RGB_COUNT=$(find /datasets/project_rgb/images -type f | wc -l)
+if [ "$RGB_COUNT" -gt 0 ]; then
+  echo "=== Starting ODM RGB pass ($RGB_COUNT images) $(date) ==="
+  docker run --rm \
+    -v /datasets:/datasets \
+    opendronemap/odm:latest \
+    --project-path /datasets \
+    --max-concurrency $(nproc) \
+    --dsm \
+    --dtm \
+    --orthophoto-png \
+    --skip-report \
+    project_rgb
+  echo "=== RGB pass done $(date) ==="
+else
+  echo "=== No wide-camera JPGs found, skipping RGB ODM pass ==="
+fi
 
 # Pass 2 — multispectral orthophoto
 echo "=== Starting ODM multispectral pass $(date) ==="
@@ -78,6 +83,25 @@ docker run --rm \
   --skip-report \
   project_ms
 echo "=== Multispectral pass done $(date) ==="
+
+# Generate RGB composite PNG from MS orthophoto for portfolio
+# Uses Red, Green, Blue bands identified by description; falls back to bands 1,2,3
+if [ -f "$ORTHO" ]; then
+  echo "=== Generating RGB composite PNG ==="
+  RED_B=$(gdalinfo "$ORTHO" | awk '/^Band [0-9]/{band=$2} /Description = Red$/{print band; exit}')
+  GRN_B=$(gdalinfo "$ORTHO" | awk '/^Band [0-9]/{band=$2} /Description = Green$/{print band; exit}')
+  BLU_B=$(gdalinfo "$ORTHO" | awk '/^Band [0-9]/{band=$2} /Description = Blue$/{print band; exit}')
+  RED_B="$${RED_B:-1}"
+  GRN_B="$${GRN_B:-2}"
+  BLU_B="$${BLU_B:-3}"
+  echo "=== RGB composite using R=band$${RED_B} G=band$${GRN_B} B=band$${BLU_B} ==="
+  gdal_translate \
+    -b "$${RED_B}" -b "$${GRN_B}" -b "$${BLU_B}" \
+    -of PNG -scale \
+    "$ORTHO" \
+    /datasets/project_ms/odm_orthophoto/rgb_composite.png
+  echo "=== RGB composite PNG complete ==="
+fi
 
 # Compute NDVI from multispectral orthophoto
 # ODM band order with --primary-band NIR: 1=Red 2=Green 3=NIR 4=RedEdge (Blue dropped as redundant)

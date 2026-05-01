@@ -88,6 +88,8 @@ docker run --rm \
   project_ms
 echo "=== Multispectral pass done $(date) ==="
 
+ORTHO=/datasets/project_ms/odm_orthophoto/odm_orthophoto.tif
+
 # Generate RGB composite PNG from MS orthophoto for portfolio
 # Uses Red, Green, Blue bands identified by description; falls back to bands 1,2,3
 if [ -f "$ORTHO" ]; then
@@ -109,7 +111,6 @@ fi
 
 # Compute NDVI from multispectral orthophoto
 # ODM band order with --primary-band NIR: 1=Red 2=Green 3=NIR 4=RedEdge (Blue dropped as redundant)
-ORTHO=/datasets/project_ms/odm_orthophoto/odm_orthophoto.tif
 if [ -f "$ORTHO" ]; then
   BAND_COUNT=$(gdalinfo "$ORTHO" | grep -c "^Band [0-9]")
   echo "=== Multispectral orthophoto has $BAND_COUNT band(s) ==="

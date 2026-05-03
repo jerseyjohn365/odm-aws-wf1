@@ -1,101 +1,145 @@
-# OpenDroneMap build using Terraform in AWS using GitHub workflow actions
+# ODM AWS Workflow — DJI M3M Multispectral Pipeline
 
-Provision EC2 instances in AWS to run OpenDroneMap. This can all be ran from GitHub using Actions. No need to install Terraform on a local machine. It uses a S3 bucket to manage the Terraform state file.
+Provision an EC2 instance on AWS using Terraform to run headless [OpenDroneMap](https://www.opendronemap.org/) on DJI Mavic 3 Multispectral imagery. Everything runs from GitHub Actions — no local Terraform installation required. Input images are pulled from S3, processed through a two-pass ODM pipeline, and all deliverables are synced back to S3 before the instance shuts down.
 
-A typical GitHub action will automatically run when a commit is posted. I opted to change the workflows to manual as I often only run a plan to check code, and more importantly, destroy the entire environment when done. I do not keep anything provisioned or running, aside from the S3 backend. The backend can be destroyed between builds. It is most needed when trying to destroy the environment.
+Forked from [kendrickcc/odm-aws-wf1](https://github.com/kendrickcc/odm-aws-wf1) — Chris Kendrick's original WebODM/ClusterODM setup on AWS. This fork replaces the WebODM stack with a fully headless ODM pipeline purpose-built for DJI M3M multispectral surveys.
 
-This build also uses ***cloud-init*** to configure the instances, using file `webodm.tpl` and `nodeodm.tbl`. It is important to note that the build will indicate complete but the machine will still need time to download containers and launch. More information on [cloud-init](https://cloud-init.io). This has taken about 5 minutes for all containers to download and launch.
+---
 
-Why Terraform: This provides a fresh clean build for each project. And can easily be decommissioned to save on cloud costs. It allows for testing of software upgrades that may come. In addition, some changes can be made on the fly once provisioned. Port 22 is left closed, but can easily be opened if needed, then simply running the Apply workflow to enable. If changes are made outside of Terraform, i.e. in the AWS Dashboard, then the Destroy workflow may not work. 
+## What it does
+
+1. Provisions a fresh EC2 instance (on-demand) via Terraform
+2. Downloads raw imagery from S3
+3. Splits images by filename pattern into RGB and multispectral sets
+4. **Pass 1 — RGB:** Runs ODM on `*_D.JPG` wide-camera images to produce an RGB orthophoto
+5. **Pass 2 — Multispectral:** Runs ODM on `*_MS_*.TIF` images with radiometric calibration (`camera+sun`) to produce a calibrated multispectral orthophoto (Green, Red, NIR, RedEdge bands)
+6. Computes NDVI from the multispectral orthophoto (NIR and Red bands)
+7. Syncs all outputs to S3 and shuts down
+
+The instance self-terminates when processing is complete. An EXIT trap ensures outputs and logs are always synced to S3 even if the script fails mid-run.
+
+---
+
+## Supported imagery
+
+DJI Mavic 3 Multispectral (M3M). Files are split by filename pattern:
+
+| Pattern | Pass |
+|---|---|
+| `*_D.JPG` | RGB orthophoto |
+| `*_MS_G.TIF`, `*_MS_R.TIF`, `*_MS_RE.TIF`, `*_MS_NIR.TIF` | Multispectral orthophoto + NDVI |
+
+PPK files (`.nav`, `.obs`, `.bin`, `.MRK`) are downloaded alongside images and ignored by ODM.
+
+---
+
+## S3 layout
+
+```
+s3://<data_bucket>/
+  input/          ← upload raw imagery here before running
+  output/
+    rgb/          ← RGB orthophoto, DSM, DTM
+    ms/           ← multispectral orthophoto (5-band), NDVI GeoTIFF
+  logs/
+    odm-processing.log
+```
+
+---
 
 ## Setup
 
-### Create IAM user with access key
+### 1. S3 buckets
 
-***CAUTION***: The access keys generated grant access to AWS. Take care with these keys. Do not write the key to a file in the repository. Once committed, and even edited out, the history can still expose the key.
+You need two S3 buckets:
 
-In AWS IAM, create a user with full access and create access keys. Download the file. Under GitHub settings, under secrets, create and enter AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY.
+- **State bucket** — stores the Terraform state file. Create this manually and record the name.
+- **Data bucket** — stores input imagery and receives processed outputs. Can be the same bucket.
 
-Reference article on setting this up: (https://medium.com/@kymidd/lets-do-devops-github-actions-terraform-aws-77ef6078e4f2)
+### 2. IAM role for OIDC
 
-### Create SSH keys
+This workflow uses [OpenID Connect](https://docs.github.com/en/actions/security-for-github-actions/security-hardening-your-deployments/configuring-openid-connect-in-amazon-web-services) to authenticate GitHub Actions with AWS — no long-lived access keys required.
 
-This can be done under IAM section, but I've found it necessary to have both keys. I don't recall getting both the private and public keys when I created a SSH key within IAM. Use `ssh-keygen` to create a new key, suggest not to use the default `id_rsa` as you will want to destroy and generate a new set of keys for this environment. 
+Create an IAM role that trusts GitHub's OIDC provider and attach a policy granting:
+- EC2 full access (for provisioning instances, VPC, IAM instance profiles)
+- S3 read/write on both buckets
 
-It may be confusing why the public key is used twice....
+Record the role ARN.
 
-For the EC2 build in `webodm.tf`, the public key is pulled from EC2 - Key Pairs and placed into the root user account, which for this instance is `ubuntu`. The files `webodm.tpl` and `nodeodm.tpl` uses the key again, but to create the `odm` user account and then adds the key there.
+### 3. GitHub Secrets
 
-### Create the S3 backend store
+In your repository under **Settings → Secrets and variables → Actions**, create:
 
-The S3 bucket is needed to manage the Terraform state file. Without this, it is very difficult to make changes to the build while running, or simply the destroy of the entire environment. The state file can contain sensitive build information i.e. credentials, so this probably is best accomplished manually. and is really simple to setup. Refer to this article: (https://www.golinuxcloud.com/configure-s3-bucket-as-terraform-backend/). Since this is a single user setup, I did not setup the DynmoDB table. If there are multiple users, then probably want the table for state locking.
+| Secret | Value |
+|---|---|
+| `AWS_ROLE_ARN` | ARN of the IAM role created above |
+| `BUCKET` | Name of the S3 state bucket |
+| `DATA_BUCKET` | Name of the S3 data bucket |
 
-The bucket name is recorded as a secret in the repository.
+### 4. Upload imagery
 
-### (Optional) Install Terraform and AWS CLI locally
+Upload your DJI M3M imagery to `s3://<data_bucket>/input/` before running the Apply workflow.
 
-If making a lot of changes to the build, it may be faster to have Terraform running locally to debug code. And since connected to AWS, the CLI for AWS will be needed. Even with the backend in AWS, one can still check code against the environment. If using the S3 backend is not desired, then simply comnent out the backend section of the build.
+### 5. Review variables
 
-For more information on how to setup Terraform and AWS CLI, refer to this article: (https://learn.hashicorp.com/tutorials/terraform/aws-build)
+Check `variables.tf` and adjust if needed:
 
-## Use
+| Variable | Default | Description |
+|---|---|---|
+| `aws_region` | `us-east-2` | AWS region |
+| `avail_zone` | `us-east-2a` | Availability zone |
+| `type_selector` | `m5a-4xlarge` | Instance type key |
+| `rootBlockSize` | `250` | Root volume size in GiB |
+| `input_prefix` | `input` | S3 prefix for input imagery |
+| `output_prefix` | `output` | S3 prefix for processed outputs |
 
-### Configuration
+For large surveys (>1000 images), `m5a.4xlarge` (16 vCPU / 64 GiB) is a reasonable default. For very large jobs, bump to `m5a-8xlarge`.
 
-1. Generate a new SSH key. I suggest renaming the private key to have a `.pem` extension. This will help keep keys more easily identified going forward. Once the public key is generated, update the file `variables.tf` for the `pub_key` name. 
-2. Upload the public key to AWS under EC2 - Key Pairs. This name must match what is in the `variables.tf` file for `pub_key`.
-3. Review the `variables.tf` data and adjust. For example, update the repo name, owner and project. This information is used to add tags to the resources in AWS and will help with billing.
-4. Verify the AWS region you will be working in. Check `webodm.tf` and `variables.tf` to confirm the region. Note: For the S3 backend, a variable could not be used.
-5. Verify the instance type size. The build will add a 100 GiB drive to the build, but you will want to select the appropriate vCPU and memory for the job. I've added a number of sizes in the `variables.tf` for ease. I've not verified all of them. Edit as needed.
-6. Check `webodm.tpl` and `nodeodm.tpl` and edit the instance build as needed. This is using ***cloud-init***.
-7. Commit all changes back to the repository.
+---
 
-### GitHub setup
+## Running a job
 
-- GitHub Secrets: In the repository, navigate to Settings, then under Security, select `secrets`. Create new secrets for the following:
+All workflows are manually triggered under **Actions → [workflow name] → Run workflow**.
 
-	- AWS_ACCESS_KEY_ID (As mentioned above)
-	- AWS_SECRET_ACCESS_KEY (As mentioned above)
-	- BUCKET (The S3 bucket name)
-	- WEBODM_PUB (Contents of public SSH key)
+| Workflow | Action |
+|---|---|
+| **A — Terraform Plan** | Validates config, shows what will be created. Run this first. |
+| **B — Terraform Apply** | Provisions infrastructure and starts ODM processing. |
+| **C — Terraform Output** | Shows instance ID and public IP from the current state. |
+| **X — Terraform Destroy** | Tears down all provisioned resources. Run when done. |
+| **Z — Terraform State Remove** | Deletes the state file from S3. Use if state gets out of sync. |
 
-Also be sure to upload the public key data and name it to match what is in `variables.tf`.
+### Typical workflow
 
-### Plan
+1. Upload imagery to S3
+2. Run **A — Plan** to validate
+3. Run **B — Apply** to start processing
+4. Wait — the instance will run ODM and self-terminate when done (typically 1–3 hours depending on image count and instance size)
+5. Download outputs from `s3://<data_bucket>/output/`
+6. Run **X — Destroy** to clean up AWS resources
 
-- In the GitHub repo, under Actions, select the `A - Terraform Plan` action, then click `Run Workflow` and select the appropriate branch, then `Run Workflow`.
+> **Note:** Terraform Apply completes in a few minutes, but ODM processing continues on the instance after that. The instance terminates itself when done — watch for it to disappear in the EC2 console, then retrieve your outputs from S3.
 
-After a few moments, the workflow will begin. Click on the job to watch progress. If fail, check the error messages. If successful, then ready to move to apply. The run has to be successful, and green before it can move to the next phase.
+---
 
-### Apply
+## Outputs
 
-- Once the plan workflow is good, repeat the same process for `B - Terraform Apply`.
+After processing, retrieve from S3:
 
-Progress of the build can be monitored. When complete, navigate to the completed run, then `terraform_apply`, and expand `Terraform Apply`. Scroll to bottom. There should be found the public IP address of the build.
+| File | Description |
+|---|---|
+| `output/rgb/odm_orthophoto/odm_orthophoto.tif` | RGB orthophoto GeoTIFF |
+| `output/rgb/odm_orthophoto/odm_orthophoto.png` | RGB orthophoto PNG |
+| `output/rgb/odm_dem/dsm.tif` | Digital Surface Model |
+| `output/rgb/odm_dem/dtm.tif` | Digital Terrain Model |
+| `output/ms/odm_orthophoto/odm_orthophoto.tif` | Multispectral orthophoto (5 bands: Red, Green, NIR, RedEdge + alpha) |
+| `output/ms/odm_orthophoto/ndvi.tif` | NDVI GeoTIFF (Float32, range −1 to 1) |
+| `logs/odm-processing.log` | Full processing log |
 
-***Note:*** It will take a few moments before the web interface is accessible as all the docker containers need to be retrieved. I've found that is 5 minutes. If after 5 minutes, then should access the instance using SSH. Since the IP address changes with each build, your local `known_hosts` file can get a little messy. Therefore I typically launch SSH with the command below.
+The multispectral orthophoto is radiometrically calibrated reflectance data. Open it in QGIS and use the Raster Calculator for additional indices (e.g. NDRE using bands 3 and 4).
 
-    ssh -q -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no -i ~/.ssh/[yourPrivateKey].pem ubuntu@[AWS public IP address]
+---
 
-### Output
+## Acknowledgements
 
-This workflow is simply there if you need to check the IP addresses again. However, since this is pulled from the `terraform.tfstate` file, it won't reflect any changes if made from the AWS console.
-
-### Destroy
-
-- Once jobs are complete and data retrieved, then the environment can be brought down by running the action `X - Terraform Destroy`. If job is successful, then all resources brought up (exception VPC - DHCP options set) will be removed.
-
-### Terraform State Destroy
-
-Sometimes the state file becomes out of sync, probably due to a change outside of Terraform, i.e. using the AWS Dashboard. This will be evident when Destroy workflow fails. Run this workflow to reset everything.
-
-## OpenDroneMap
-
-After 5 minutes, WebODM, ClusterODM and nodeODM nodes should be ready to acesss. Open the `B - Terraform Apply` action, and select `Terraform Apply` until you see `Terraform Output`. Expand this section and you should see IP addresses for the nodes. A public IP address for WebODM, then private IP addresses for ClusterODM and any nodes. 
-
-- [public ip]:8000 WebODM
-- [public ip]:8001 ClusterODM (Yes, this is changed from the default port of 10000)
-
-Open a browser to the ClusterODM port and add in the nodes using the private IP address. Use port 3001 for the node that is on the WebODM/ClusterODM server, then port 3000 for the other nodes.
-
-Then open port 8000 to access the WebODM portal, and add the ClusterODM using the private IP address and port 8080.
+Forked from [kendrickcc/odm-aws-wf1](https://github.com/kendrickcc/odm-aws-wf1). Chris Kendrick's original project laid the groundwork for GitHub Actions-driven Terraform/ODM on AWS. This fork adapts it for automated headless multispectral processing without a WebODM interface.

@@ -35,6 +35,7 @@ jobs:
         terraform init \
           -reconfigure -input=false -no-color \
           -backend-config="bucket=${{ secrets.BUCKET}}"
+          -backend-config="region=us-east-2"
 
     - name: Terraform apply
       id: apply
